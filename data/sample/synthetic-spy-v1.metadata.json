@@ -1,0 +1,18 @@
+{
+  "id": "synthetic-spy-v1",
+  "file": "synthetic-spy-v1.csv",
+  "kind": "synthetic",
+  "symbol": "SPY",
+  "source": "Deterministic synthetic fixture; NOT historical SPY market prices",
+  "acquired_at": "2026-10-24T00:00:00Z",
+  "currency": "USD",
+  "frequency": "1d",
+  "adjustment_mode": "raw",
+  "start_date": "2018-01-02",
+  "end_date": "2025-12-31",
+  "rows": 2011,
+  "sha256": "38289cb193a0ce08ce99b8363c107436d404aaa2720fe596c298ece5f806c2f1",
+  "redistributable": true,
+  "return_basis": "price-only",
+  "seed": 20261024
+}
