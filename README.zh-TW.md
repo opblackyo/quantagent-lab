@@ -59,7 +59,7 @@ Source ZIP 刻意不含 `.git`，其實驗匯出沒有 Git commit metadata；請
 
 私人行情、資料庫、API 回應與開發設定不供公開散布。專案已選定 [MIT](LICENSE)，署名 QuantAgent Lab contributors；授權審查見 [紀錄](docs/LICENSE_PROPOSAL.md)；正式發布需完成 [檢查表](docs/PUBLIC_RELEASE_CHECKLIST.md)。初次發布的 [GitHub CI](https://github.com/opblackyo/quantagent-lab/actions/runs/40076415541) 已通過 48 個 Python 測試、4 個 Chromium E2E、型別檢查與建置；此紀錄不涵蓋後續本機變更。目前沒有公開網站部署。
 
-一般 API 路由支援 OpenAI direct；另有實驗性 `tools/run_live_operator.py`，以伺服器端核准 bundle、HTTPS client 與延遲私密金鑰載入接合有界 UI 路徑。正式 HTTP 路徑缺少獨立真實扣款證據時會保留完整預留，不把合成 usage 或 token estimate 當成 actual。這不是可直接投入使用的 live billing 整合，本次也未完成付費 UI 驗收。UI 支援本機保存結果、Replay 與 JSON 匯出，尚無瀏覽器上傳匯入；無金鑰 Mock／Replay 為支援的展示路徑。
+一般 HTTP 路由只公布 Mock／Replay 能力，會拒絕 direct 與 gateway 的付費 Agent 啟動；adapter 實作與後端環境變數並不代表該路由已開放付費模式。另有實驗性 `tools/run_live_operator.py`，以伺服器端核准 bundle、HTTPS client 與延遲私密金鑰載入接合有界 UI 路徑。正式 HTTP 路徑缺少獨立真實扣款證據時會保留完整預留，不把合成 usage 或 token estimate 當成 actual。這不是可直接投入使用的 live billing 整合，本次也未完成付費 UI 驗收。UI 支援本機保存結果、Replay 與 JSON 匯出，尚無瀏覽器上傳匯入；無金鑰 Mock／Replay 為支援的展示路徑。
 
 HTTPX 的 connect/read/write/pool 預設各 30 秒，屬階段／資料塊等待限制，不是總執行時限。私人 runner 可另凍結有限的伺服器端 `timeout_policy`，不送入模型 JSON；逾時保留費用預留與分類診斷，不自動重送。
 
