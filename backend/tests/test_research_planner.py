@@ -26,7 +26,9 @@ def setup_plan(tmp_path):
     content = "session_date,open,high,low,close,volume\n" + "".join(
         f"{d.date()},{100+i},{102+i},{99+i},{101+i},1000\n" for i, d in enumerate(days))
     csv = tmp_path / "synthetic-planner.csv"
-    csv.write_text(content, encoding="utf-8")
+    # Preserve the legacy Windows fixture bytes on every host. The immutable
+    # dataset hash intentionally binds raw CSV bytes, including line endings.
+    csv.write_bytes(content.replace("\n", "\r\n").encode("utf-8"))
     meta = {"id":"synthetic-planner", "file":csv.name, "sha256":sha256(csv.read_bytes()),
         "kind":"synthetic", "symbol":"SPY", "currency":"USD", "adjustment_mode":"raw", "return_basis":"price-only",
         "rows":len(days), "start_date":str(days[0].date()), "end_date":str(days[-1].date()),
@@ -88,6 +90,16 @@ def no_side_effects(monkeypatch):
 def preview(parts):
     request, profile, registry, context = parts
     return plan_study(request, profile, registry, context=context)
+
+
+def test_fixture_keeps_legacy_csv_bytes_across_platforms(tmp_path, setup_plan):
+    raw = (tmp_path / "synthetic-planner.csv").read_bytes()
+    assert sha256(raw) == "40000fb52295041f53ed2763ef5ddcedd944aaf6eb58dc16d90698c0bbc0415c"
+    assert raw.count(b"\r\n") == 105  # Header plus 104 XNYS sessions.
+    assert b"\n" not in raw.replace(b"\r\n", b"")
+    # A different newline encoding is a different immutable dataset, not a
+    # platform-specific alternative that a frozen manifest may silently accept.
+    assert sha256(raw.replace(b"\r\n", b"\n")) != setup_plan[0].expected_dataset_hash
 
 
 def test_deterministic_common_calendar_inputs_and_bound(setup_plan, monkeypatch):
