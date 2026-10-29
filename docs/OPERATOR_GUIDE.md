@@ -19,7 +19,7 @@ In 建立實驗 select `synthetic-spy-v1`, Mock and Single-Agent or Multi-Agent.
 With the service running, the existing four-strategy offline demonstration is:
 
 ```sh
-uv run --no-sync python tools/run_research.py --dataset synthetic-spy-v1 --start 2024-01-01 --end 2024-12-31
+uv run --no-sync python tools/run_research.py --dataset synthetic-spy-v1 --start 2024-01-01 --end 2024-12-31 --api http://127.0.0.1:18411/api/v1
 ```
 
 ## Verify without real credentials

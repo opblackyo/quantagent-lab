@@ -66,6 +66,8 @@ The bundled fixture has 2,011 deterministic synthetic sessions from 2018–2025.
 uv run --no-sync python tools/run_research.py --dataset synthetic-spy-v1 --start 2024-01-01 --end 2024-12-31
 ```
 
+When using the alternate backend port above, add `--api http://127.0.0.1:18411/api/v1` to this pipeline command.
+
 Generated runs and exports remain local in ignored `artifacts/`. Replay needs no private database: create a Mock run, then replay it.
 
 Source ZIPs intentionally omit `.git`. Their run exports have no Git commit metadata; use the displayed source hash and the delivery's external file/commit manifest to identify the code. The UI distinguishes unavailable Git metadata from a detected modified checkout.
