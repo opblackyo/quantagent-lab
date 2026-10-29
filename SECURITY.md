@@ -4,7 +4,7 @@ The alpha is a local research application. It binds to loopback by default, has 
 
 ## Reporting
 
-The public repository and private reporting channel have not been established. Before publication, the maintainer must enable GitHub private vulnerability reporting (or approve another private contact) and verify it works. After that, use the repository Security tab's private reporting option. Do not open a public issue containing credentials, account identifiers, model responses, databases or a working exploit against a private service. No personal contact address is published here.
+The [public repository](https://github.com/opblackyo/quantagent-lab) has GitHub private vulnerability reporting enabled; authenticated and unauthenticated API status checks confirmed this on 2026-10-24. Use the repository Security tab's private reporting option. No test vulnerability report was submitted. Do not open a public issue containing credentials, account identifiers, model responses, databases or a working exploit against a private service. No personal contact address is published here.
 
 ## Credentials and artifacts
 

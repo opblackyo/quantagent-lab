@@ -1,3 +1,5 @@
+> Historical preparation record (2026-10-24). Pending-approval and no-publication statements below describe that earlier checkpoint, not the current release. Initial publication already occurred. For the reviewed closeout snapshot and current limitations, see [research closeout](RESEARCH_CLOSEOUT.md) and the matching release/CI.
+
 > Superseded for this candidate: see [final local verification](FINAL_PUBLICATION_VERIFICATION.md). MIT and exact public noreply are now owner-confirmed; publication remains unapproved.
 
 # Public release checklist

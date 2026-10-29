@@ -1013,6 +1013,26 @@ tr:last-child td {
   margin-left: auto;
   text-decoration: underline;
 }
+.fixture-banner {
+  background: #f4f7ff;
+  border: 1px solid #d5def3;
+  border-radius: 7px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+.fixture-banner strong {
+  display: block;
+  font-size: 13px;
+}
+.fixture-banner p {
+  margin: 6px 0 0;
+  color: #53627a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.research-panel .settings-form {
+  padding: 0 22px 12px;
+}
 .empty-state {
   display: flex;
   flex-direction: column;

@@ -3,6 +3,7 @@ import path from "node:path";
 
 export default defineConfig({
   testDir: "./tests",
+  testIgnore: ["**/research-fixture.spec.ts", "**/research-live-composition.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 60000,
@@ -22,7 +23,8 @@ export default defineConfig({
       url: "http://127.0.0.1:8001/api/v1/health",
       reuseExistingServer: false,
       env: {
-        QUANTAGENT_DB_PATH: path.resolve(__dirname, "../artifacts/e2e.sqlite3"),
+        QUANTAGENT_DB_PATH: process.env.QUANTAGENT_E2E_DB || path.resolve(__dirname, "../artifacts/e2e.sqlite3"),
+        QUANTAGENT_LOCAL_ORIGINS: "http://127.0.0.1:3001",
       },
       timeout: 60000,
     },

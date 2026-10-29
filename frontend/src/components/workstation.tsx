@@ -30,6 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ComparisonChart, EquityChart, MarketChart } from "@/components/charts";
+import ResearchPanel from "@/components/research-panel";
 import {
   api,
   createExperiment,
@@ -46,6 +47,7 @@ import {
   type Equity,
   type Run,
   type Trade,
+  type PilotBudget,
 } from "@/lib/api";
 
 const navigation = [
@@ -54,6 +56,7 @@ const navigation = [
   { path: "/agents", label: "Agent 決策", icon: Workflow },
   { path: "/backtests", label: "策略比較", icon: FlaskConical },
   { path: "/runs", label: "實驗紀錄", icon: List },
+  { path: "/research", label: "合成研究", icon: ShieldCheck },
   { path: "/settings", label: "研究設定", icon: Settings },
 ];
 const pageCopy: Record<string, { title: string; description: string }> = {
@@ -80,6 +83,10 @@ const pageCopy: Record<string, { title: string; description: string }> = {
   "/settings": {
     title: "研究設定",
     description: "調整新實驗的預設參數，檢查資料與模型可用狀態。",
+  },
+  "/research": {
+    title: "合成研究",
+    description: "本機合成夾具的預覽、啟動與安全重播。不是即時 API 績效。",
   },
 };
 const defaults = {
@@ -118,6 +125,11 @@ const reasonNames: Record<string, string> = {
   REPLAY_MISSING_DECISION: "來源缺少這個決策日",
   REPLAY_INPUT_MISMATCH: "重播輸入與原始紀錄不同",
   REPLAY_CONTRACT_MISMATCH: "重播輸出未通過當前契約",
+  PILOT_BUDGET_EXHAUSTED: "整體 Pilot 預算或呼叫次數已用盡",
+  PILOT_BUDGET_EXCEEDED: "回報費用超過 Pilot 上限，停止新呼叫",
+  PILOT_INPUT_BOUND_EXCEEDED: "輸入超過已凍結的預留界線",
+  MODEL_VERSION_MISMATCH: "提供者回傳的模型版本與固定快照不符",
+  PROVIDER_CONFIGURATION_CHANGED: "提供者、群組或模型設定已變更，停止新呼叫",
 };
 const reasonText = (code: string) => reasonNames[code] || code;
 
@@ -143,7 +155,7 @@ function Status({ status, progress }: { status: string; progress?: number }) {
     </span>
   );
 }
-function Panel({
+export function Panel({
   title,
   subtitle,
   action,
@@ -500,6 +512,8 @@ export default function Workstation() {
               <Loader2 className="spin" />
               載入研究資料…
             </div>
+          ) : pathname === "/research" ? (
+            <ResearchPanel datasets={datasets} />
           ) : pathname === "/settings" ? (
             <SettingsPage datasets={datasets} capabilities={capabilities} />
           ) : pathname === "/runs" ? (
@@ -620,6 +634,17 @@ function Overview({
   runs: Run[];
   href: (p: string) => string;
 }) {
+  const [pilotBudget, setPilotBudget] = useState<PilotBudget | null>(null);
+  useEffect(() => {
+    let ignore = false;
+    setPilotBudget(null);
+    if (run.config.research_group_id) {
+      api<PilotBudget>(`/pilots/${run.config.research_group_id}/budget`)
+        .then((value) => { if (!ignore) setPilotBudget(value); })
+        .catch(() => { if (!ignore) setPilotBudget(null); });
+    }
+    return () => { ignore = true; };
+  }, [run.run_id, run.config.research_group_id]);
   const metrics = run.metrics!;
   const latest = details.decisions.filter((d) => d.decision_output).at(-1);
   const point = details.equity.at(-1)!;
@@ -713,7 +738,7 @@ function Overview({
                 </dd>
               </div>
               <div>
-                <dt>LLM 呼叫／已知費用</dt>
+                <dt>LLM 呼叫／用量估計費用</dt>
                 <dd>
                   {metrics.llm_calls} / {money(metrics.llm_cost_usd, 4)}
                 </dd>
@@ -722,6 +747,15 @@ function Overview({
                 <div>
                   <dt>待確認費用預留</dt>
                   <dd>{money(metrics.uncertain_cost_reserve_usd ?? 0, 4)}</dd>
+                </div>
+              )}
+              {pilotBudget && (
+                <div data-testid="pilot-budget">
+                  <dt>Pilot 共用預算（含待確認費用）</dt>
+                  <dd>{money(pilotBudget.charged_or_reserved_usd, 4)} / {money(pilotBudget.limit_usd, 2)} · {pilotBudget.attempts}/{pilotBudget.max_calls} 次</dd>
+                  <dd data-testid="pilot-cost-reconciliation">
+                    已核對扣款 {money(pilotBudget.confirmed_actual_usd ?? 0, 8)} · 用量估計 {money(pilotBudget.usage_estimated_usd, 8)} · 待確認預留 {money(pilotBudget.unknown_reserved_usd, 8)}
+                  </dd>
                 </div>
               )}
             </dl>
@@ -882,7 +916,7 @@ function MarketPage({
   );
 }
 
-function AgentsPage({
+export function AgentsPage({
   decisions,
   trades,
 }: {
@@ -1072,7 +1106,7 @@ function AgentsPage({
       </div>
       <Panel
         title="可追溯的原始紀錄"
-        subtitle="模型輸入、原始回應、驗證與風控結果"
+        subtitle="模型輸入、驗證與風控結果；私有 API 原始回應留在本機，不傳回瀏覽器"
       >
         <details className="raw-record">
           <summary>展開 JSON 紀錄</summary>
@@ -1139,7 +1173,15 @@ function AgentCard({
       </div>
       {call && (
         <div className="agent-card-foot">
-          <span>{call.model_id}</span>
+          <span>{String(call.actual_model_id || call.model_id)}</span>
+          {typeof call.provider_attribution === "object" && call.provider_attribution !== null && (
+            <span data-testid="provider-attribution">
+              {String((call.provider_attribution as Record<string, unknown>).provider || "")}
+              {(call.provider_attribution as Record<string, unknown>).provider === "kuaiapi" && (
+                <> · {String((call.provider_attribution as Record<string, unknown>).group || "")} · gateway 標籤，上游未驗證</>
+              )}
+            </span>
+          )}
           <span>
             {call.mode === "replay"
               ? "Replay"
@@ -1176,10 +1218,14 @@ function BacktestsPage({
       "fee_bps",
       "slippage_bps",
       "max_exposure",
+      "research_group_id",
     ];
     const compatible = runs.filter(
       (r) =>
         r.status === "COMPLETED" &&
+        (r.config.llm_mode === "replay") === (selected.config.llm_mode === "replay") &&
+        (!r.config.strategy_id.endsWith("agent") || !selected.config.strategy_id.endsWith("agent") ||
+          r.config.llm_mode === selected.config.llm_mode) &&
         keys.every((k) => r.config[k] === selected.config[k]),
     );
     const grouped = new Map<string, Run>();
@@ -1256,7 +1302,7 @@ function BacktestsPage({
                     <th>最大回撤</th>
                     <th>Sharpe</th>
                     <th>成交筆數</th>
-                    <th>LLM 成本</th>
+                    <th>LLM 估計成本</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1271,7 +1317,7 @@ function BacktestsPage({
                         />
                         {strategyNames[r.config.strategy_id]}
                       </td>
-                      <td>{r.config.llm_mode}</td>
+                      <td>{r.decision_origin === "baseline" ? "Baseline" : r.config.llm_mode}</td>
                       <td
                         className={
                           r.metrics!.total_return >= 0 ? "positive" : "negative"
@@ -1439,8 +1485,8 @@ function RunsPage({
             <div>
               <dt>程式版本</dt>
               <dd>
-                {run.code_commit?.slice(0, 12) || "未提交"}
-                {run.code_dirty ? " · 含尚未提交修改" : ""}
+                {run.code_commit?.slice(0, 12) || "無 Git metadata · 請以來源雜湊核對"}
+                {run.code_commit && run.code_dirty ? " · 含尚未提交修改" : ""}
               </dd>
             </div>
             <div>
@@ -1464,7 +1510,7 @@ function RunsPage({
 function PlayIcon() {
   return <RefreshCw size={14} />;
 }
-function TradeTable({ trades }: { trades: Trade[] }) {
+export function TradeTable({ trades }: { trades: Trade[] }) {
   return (
     <div className="table-scroll">
       <table>
@@ -1584,7 +1630,7 @@ function SettingsPage({
             </div>
           </dl>
           <p className="panel-note">
-            模型金鑰與費率由後端環境變數設定。未配置時可完整使用離線研究流程。
+            此應用不讀取模型金鑰，也不啟用即時 API。離線 Mock / Replay 可完整使用。合成夾具會另外標示，不是已驗證的即時績效。
           </p>
         </Panel>
         <Panel title="可用資料集">

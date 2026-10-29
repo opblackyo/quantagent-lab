@@ -1,3 +1,5 @@
+> Historical preparation record (2026-10-24). Pending-approval and no-publication statements below describe that earlier checkpoint, not the current release. Initial publication already occurred. For the reviewed closeout snapshot and current limitations, see [research closeout](RESEARCH_CLOSEOUT.md) and the matching release/CI.
+
 # Final local publication preparation
 
 Date: 2026-10-24 (Asia/Taipei). Target: v0.1.0-alpha. No publication is authorized or performed. This supersedes earlier release-preparation status.

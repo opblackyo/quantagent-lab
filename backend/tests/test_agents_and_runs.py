@@ -55,7 +55,7 @@ def test_timeout_and_budget_are_bounded(snapshot):
             raise httpx.ReadTimeout("timeout")
     workflow = AgentWorkflow(ExperimentConfig(), TimeoutProvider())
     result = workflow.evaluate(snapshot)
-    assert len(result["calls"]) == 2
+    assert len(result["calls"]) == 1
     assert result["reason_codes"] == ["PROVIDER_TIMEOUT"]
     result = AgentWorkflow(ExperimentConfig(max_llm_calls=1)).evaluate(snapshot)
     assert result["decision_output"] is None

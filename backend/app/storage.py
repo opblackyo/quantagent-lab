@@ -23,7 +23,7 @@ class Store:
         self.keeper = None
         self.database_lock = threading.RLock()
 
-    def initialize(self):
+    def _acquire_owner(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = self.path.with_suffix(".lock").open("a+b")
         self.lock.seek(0, 2)
@@ -42,19 +42,35 @@ class Store:
             self.lock.close()
             self.lock = None
             raise RuntimeError("another QuantAgent worker owns this database") from None
+        # Keep WAL open across short worker-thread connections. Closing the
+        # last connection after each event forces a checkpoint every time.
+        self.keeper = sqlite3.connect(self.path, check_same_thread=False)
+        self.keeper.row_factory = sqlite3.Row
+        self.keeper.execute("PRAGMA journal_mode=WAL").fetchone()
+
+    @staticmethod
+    def create_run_schema(conn):
+        conn.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, status TEXT NOT NULL, progress INTEGER NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, error_message TEXT, code_commit TEXT, code_dirty INTEGER, source_hash TEXT, result_json TEXT, idempotency_key TEXT UNIQUE)")
+        conn.execute("CREATE TABLE IF NOT EXISTS events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, event_type TEXT NOT NULL, event_id TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(run_id,event_type,event_id))")
+        conn.execute("CREATE INDEX IF NOT EXISTS events_run ON events(run_id,sequence)")
+
+    def initialize(self):
         try:
-            # Keep WAL open across short worker-thread connections. Closing the
-            # last connection after each event forces a checkpoint every time.
-            self.keeper = sqlite3.connect(self.path, check_same_thread=False)
-            self.keeper.execute("PRAGMA journal_mode=WAL").fetchone()
+            self._acquire_owner()
             with self.connect() as conn:
-                conn.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, status TEXT NOT NULL, progress INTEGER NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, error_message TEXT, code_commit TEXT, code_dirty INTEGER, source_hash TEXT, result_json TEXT, idempotency_key TEXT UNIQUE)")
-                conn.execute("CREATE TABLE IF NOT EXISTS events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, event_type TEXT NOT NULL, event_id TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(run_id,event_type,event_id))")
-                conn.execute("CREATE INDEX IF NOT EXISTS events_run ON events(run_id,sequence)")
+                self.create_run_schema(conn)
                 conn.execute("UPDATE runs SET status='FAILED', error_message='SERVICE_RESTARTED', finished_at=? WHERE status IN ('PENDING','RUNNING')", (now(),))
         except BaseException:
             self.close()
             raise
+
+    @contextmanager
+    def read(self):
+        """Pure polling on an existing owned connection; never create a file."""
+        with self.database_lock:
+            if self.keeper is None or self.lock is None or not self.path.is_file():
+                raise RuntimeError("store must be explicitly opened before reading")
+            yield self.keeper
 
     @contextmanager
     def connect(self):
@@ -94,7 +110,7 @@ class Store:
 
     def events(self, run_id):
         run = self.get(run_id)
-        with self.connect() as conn:
+        with self.read() as conn:
             rows = conn.execute("SELECT * FROM events WHERE run_id=? ORDER BY sequence",(str(run_id),)).fetchall()
         result=[]
         for row in rows:
@@ -157,13 +173,13 @@ class Store:
         return result
 
     def get(self, run_id, include_result=False):
-        with self.connect() as conn:
+        with self.read() as conn:
             row = conn.execute("SELECT * FROM runs WHERE run_id=?", (str(run_id),)).fetchone()
         if not row:
             raise KeyError("unknown run")
         return self.decode(row, include_result)
 
     def list(self):
-        with self.connect() as conn:
+        with self.read() as conn:
             rows = conn.execute("SELECT * FROM runs ORDER BY created_at DESC LIMIT 100").fetchall()
         return [self.decode(row) for row in rows]

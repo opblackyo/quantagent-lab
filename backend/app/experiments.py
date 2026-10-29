@@ -1,11 +1,10 @@
-from datetime import timedelta
 import importlib.metadata
 import sys
 from uuid import uuid4
 
 from .agents import AgentWorkflow, replay_decision
 from .backtest import Ledger, assess_risk, performance
-from .data import ROOT, Dataset, get_calendar, sha256
+from .data import ROOT, Dataset, get_calendar, sha256, schedule
 from .features import snapshots
 from .models import DecisionOutput, ENGINE_VERSION, ExperimentConfig, FEATURE_VERSION
 
@@ -16,28 +15,14 @@ def baseline_output(strategy: str, snapshot) -> dict:
                           evidence=("ma20", "ma60") if strategy == "ma_crossover" else ()).model_dump(mode="json")
 
 
-def schedule(dataset: Dataset, config: ExperimentConfig, features: dict) -> dict:
-    cal = get_calendar(config.start_date, config.end_date)
-    sessions = [d.date() for d in cal.sessions_in_range(str(config.start_date), str(config.end_date + timedelta(days=7)))]
-    in_range = [d for d in sessions if d <= config.end_date]
-    if not in_range or in_range[0] < dataset.bars[0].session_date or in_range[-1] > dataset.bars[-1].session_date:
-        raise ValueError("requested market sessions fall outside the dataset")
-    positions = {bar.session_date: i for i, bar in enumerate(dataset.bars)}
-    decisions = {day: sessions[i + 1] for i, day in enumerate(sessions[:-1])
-                 if day <= config.end_date and positions.get(day, -1) >= 59 and day.isocalendar()[:2] != sessions[i + 1].isocalendar()[:2]}
-    if not any(execution <= config.end_date for execution in decisions.values()):
-        raise ValueError("range has no weekly decision with enough warmup and a following execution session")
-    return decisions
-
-
-def run_experiment(config: ExperimentConfig, dataset: Dataset, progress=lambda n: None, source: dict | None = None, provider=None, record_event=lambda kind,payload: None) -> dict:
+def run_experiment(config: ExperimentConfig, dataset: Dataset, progress=lambda n: None, source: dict | None = None, provider=None, record_event=lambda kind,payload: None, budget=None, initial_agent_results=None) -> dict:
     features = snapshots(dataset)
     decisions_at = schedule(dataset, config, features)
     cal = get_calendar(config.start_date, config.end_date)
     ledger = Ledger(config.initial_cash)
     bars = [b for b in dataset.bars if config.start_date <= b.session_date <= config.end_date]
     agent_strategy = config.strategy_id in ("single_agent", "multi_agent")
-    workflow = AgentWorkflow(config, provider) if agent_strategy and config.llm_mode != "replay" else None
+    workflow = AgentWorkflow(config, provider, budget) if agent_strategy and config.llm_mode != "replay" else None
     originals = {record["decision_session"]: record for record in (source or {}).get("decisions", [])}
     decisions, trades, equity = [], [], []
     pending = None
@@ -73,9 +58,13 @@ def run_experiment(config: ExperimentConfig, dataset: Dataset, progress=lambda n
             else:
                 if config.llm_mode == "replay":
                     original = originals.get(str(day))
-                    record.update(replay_decision(snap, original, baseline=not agent_strategy) if original else {"reason_codes": ["REPLAY_MISSING_DECISION"]})
+                    record.update(replay_decision(snap, original, baseline=not agent_strategy, expected_provider=(source or {}).get('provider_attribution')) if original else {"reason_codes": ["REPLAY_MISSING_DECISION"]})
                 elif agent_strategy:
-                    record.update(workflow.evaluate(snap, on_call=lambda call: record_event("agent_call", {"decision_id": record["decision_id"], **call})))
+                    saved = (initial_agent_results or {}).get(str(day))
+                    record.update(saved if saved is not None else workflow.evaluate(snap, on_call=lambda call: record_event("agent_call", {"decision_id": record["decision_id"], **call})))
+                    if saved is not None:
+                        for call in saved['calls']:
+                            record_event('agent_call',{'decision_id':record['decision_id'],**call})
                 else:
                     record["decision_output"] = baseline_output(config.strategy_id, snap)
                 parsed = DecisionOutput.model_validate(record["decision_output"]) if record["decision_output"] else None
@@ -103,7 +92,7 @@ def run_experiment(config: ExperimentConfig, dataset: Dataset, progress=lambda n
                    uncertain_cost_reserve_usd=sum(c["reserved_usd"] for c in calls if c.get("cost_status") == "unknown_reserved"),
                    llm_input_tokens=sum(c["input_tokens"] for c in calls), llm_output_tokens=sum(c["output_tokens"] for c in calls),
                    llm_latency_ms=sum(c["latency_ms"] for c in calls),
-                   reserved_or_actual_usd=workflow.spent if workflow else 0,
+                   reserved_or_actual_usd=sum(c['reserved_usd'] if c.get('cost_status')=='unknown_reserved' else c['cost_usd'] for c in calls),
                    approved_decisions=sum(d["status"] == "APPROVED" for d in decisions),
                    skipped_decisions=sum(d["status"] == "SKIPPED" for d in decisions),
                    rejected_decisions=sum(d["status"] == "REJECTED" for d in decisions))
@@ -111,6 +100,8 @@ def run_experiment(config: ExperimentConfig, dataset: Dataset, progress=lambda n
             "return_basis": "price-only", "decision_origin": (source or {}).get("decision_origin", config.llm_mode) if agent_strategy else "baseline",
             "dataset": dataset.metadata, "decisions": decisions, "trades": trades,
             "model_ids": sorted({c.get("actual_model_id", c["model_id"]) for c in calls}) or ([config.model_id] if agent_strategy and config.model_id else []),
+            "provider_settings": workflow.provider.settings if workflow else (source or {}).get("provider_settings"),
+            "provider_attribution": getattr(workflow.provider,'attribution',None) if workflow else (source or {}).get('provider_attribution'),
             "environment": {"python": sys.version.split()[0],
                             "packages": {p: importlib.metadata.version(p) for p in ("pydantic", "pandas", "numpy", "langgraph", "exchange-calendars")},
                             "uv_lock_sha256": sha256((ROOT / "uv.lock").read_bytes())},

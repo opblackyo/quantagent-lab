@@ -8,7 +8,7 @@ from pathlib import Path
 
 import exchange_calendars as xc
 
-from .models import MarketBar
+from .models import MarketBar, ExperimentConfig
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -95,3 +95,17 @@ def parse_csv(content: bytes) -> tuple[MarketBar, ...]:
     if dates != expected_dates:
         raise ValueError("missing or non-trading market session")
     return bars
+
+
+def schedule(dataset: Dataset, config: ExperimentConfig, features: dict) -> dict:
+    cal = get_calendar(config.start_date, config.end_date)
+    sessions = [d.date() for d in cal.sessions_in_range(str(config.start_date), str(config.end_date + timedelta(days=7)))]
+    in_range = [d for d in sessions if d <= config.end_date]
+    if not in_range or in_range[0] < dataset.bars[0].session_date or in_range[-1] > dataset.bars[-1].session_date:
+        raise ValueError("requested market sessions fall outside the dataset")
+    positions = {bar.session_date: i for i, bar in enumerate(dataset.bars)}
+    decisions = {day: sessions[i + 1] for i, day in enumerate(sessions[:-1])
+                 if day <= config.end_date and positions.get(day, -1) >= 59 and day.isocalendar()[:2] != sessions[i + 1].isocalendar()[:2]}
+    if not any(execution <= config.end_date for execution in decisions.values()):
+        raise ValueError("range has no weekly decision with enough warmup and a following execution session")
+    return decisions

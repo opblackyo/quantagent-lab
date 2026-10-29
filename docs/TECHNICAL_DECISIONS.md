@@ -1,5 +1,11 @@
 # 技術決策 v0.2
 
+2026-10-25 Owner dispatch 補充：私人 pilot 可另行選擇 KuaiAPI Responses gateway；
+OpenAI 直連仍要求 dated snapshot，KuaiAPI 則只凍結「gateway 請求標籤／回報標籤／
+Owner 聲明的 key 群組／設定」，不能據此宣稱精確上游模型或官方等價。
+本差異依本次明確派工採納，路由、單位與未驗證限制見 `KUAIAPI_INTEGRATION.md`。
+本次只有離線實作授權；付費 API、舊 USD2 提案、發布與部署均未獲新授權。
+
 2026-10-24：以下補足 v0.1 藍圖中的實作歧義；保留 SPY、日線、週決策、下一開盤、四組比較與研究用途。
 
 1. **報酬與資料**：MVP 僅使用 raw OHLC 的 price-only return，股息／利息為零，不自動期末平倉；結果標示此限制。以明確標示的合成行情提供可再散布的離線 Demo。個人研究的真實 SPY CSV 存 `data/cache/`，由顯式下載／匯入建立；不得將 Yahoo 行情當作可隨程式任意再散布的資產。實際下載仍須遵守來源使用條款。調整價資料不接受 raw 標籤。

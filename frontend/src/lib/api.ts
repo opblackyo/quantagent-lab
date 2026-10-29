@@ -137,6 +137,16 @@ export type Comparison = {
   curves: { run_id: string; strategy_id: string; equity: Equity[] }[];
   return_basis: string;
 };
+export type PilotBudget = {
+  attempts: number;
+  max_calls: number;
+  limit_usd: number;
+  usage_estimated_usd: number;
+  unknown_reserved_usd: number;
+  charged_or_reserved_usd: number;
+  confirmed_actual_usd: number;
+  invoiced_actual_usd: number | null;
+};
 
 export const strategyNames: Record<string, string> = {
   buy_hold: "Buy & Hold",
@@ -189,3 +199,114 @@ export async function createExperiment(config: Partial<Config>) {
   window.dispatchEvent(new Event("quantagent:updated"));
   return result;
 }
+
+export type ResearchProfile = {
+  profile_id: string;
+  provider: string;
+  model_id: string;
+  identity_scope: string;
+  dataset_id: string;
+  dataset_kind: string;
+  allowed_start: string;
+  allowed_end: string;
+  label: string;
+  scenario: string;
+};
+export type ResearchReadiness = {
+  service: string;
+  live_provider: boolean;
+  real_spending_authorized: boolean;
+  execution_authorized: boolean;
+  funding: string | null;
+  fixture_transport_posts: number;
+  profiles: ResearchProfile[];
+  labels: string[];
+  queue_limit: number;
+  held_approvals?: { profile_id: string; manifest_hash: string; tariff_id: string; expires_at: string; attempt_budget: number }[];
+};
+export type ResearchPreview = {
+  plan: {
+    manifest_hash: string;
+    sessions: { decision: string; execution: string }[];
+    estimate: {
+      total_nominal_calls: number;
+      capped_attempt_ceiling: number;
+      capped_reservation_usd: string | number;
+      baseline_calls: number;
+      all_attempts_fit_requested_caps: boolean;
+    };
+    warnings: string[];
+    study_protocol?: string | null;
+    overall_deadline_seconds?: number | null;
+    transport_intent?: string | null;
+    strategy_ids?: string[];
+    execution_authorized: boolean;
+    return_basis: string;
+    identity_scope: string;
+    model_id: string;
+    dataset_kind: string;
+  };
+  execution_authorized: boolean;
+  real_spending_authorized: boolean;
+  preview_is_not_funding: boolean;
+  server_live_ready?: boolean;
+  labels: string[];
+};
+export type ResearchStudy = {
+  study_id: string;
+  worker_busy: boolean;
+  state: string;
+  reason: string | null;
+  coverage: Record<string, string>;
+  cost: PilotBudget | null;
+  source_runs: Record<string, { run_id: string; status: string; origin: string | null }>;
+  replay_runs: Record<string, { run_id: string; status: string; origin: string | null }>;
+  progress: { total_slots: number; recorded_slots: number; by_state: Record<string, number> };
+  fixture_transport_posts: number;
+  replay_posts: number | null;
+  labels: string[];
+  synthetic_fixture: boolean;
+  real_spending_authorized: boolean;
+  execution_authorized: boolean;
+  plan: { manifest_hash?: string; return_basis?: string; identity_scope?: string; study_protocol?: string | null; strategy_ids?: string[]; transport_intent?: string | null };
+};
+export type ResearchSource = {
+  strategy: string;
+  status: string;
+  origin: string;
+  partial: boolean;
+  complete: boolean;
+  run_id: string | null;
+  decisions: Decision[];
+  trades: Trade[];
+  equity: Equity[];
+  metrics: Metrics | null;
+  not_complete?: boolean;
+  return_basis: string;
+};
+
+const jsonInit = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export const researchReadiness = () => api<ResearchReadiness>("/research/readiness");
+export const researchPreview = (request: Record<string, unknown>) =>
+  api<ResearchPreview>("/research/preview", jsonInit(request));
+export const researchStart = (body: Record<string, unknown>) =>
+  api<ResearchStudy>("/research/studies", jsonInit(body));
+export const researchStudies = () =>
+  api<{ studies: { study_id: string; state: string; profile_id: string }[]; service: string }>("/research/studies");
+export const researchStudy = (studyId: string) =>
+  api<ResearchStudy>(`/research/studies/${studyId}`);
+export const researchCancel = (studyId: string) =>
+  api<ResearchStudy>(`/research/studies/${studyId}/cancel`, jsonInit({}));
+export const researchReconcile = (studyId: string) =>
+  api<ResearchStudy>(`/research/studies/${studyId}/reconcile`, jsonInit({}));
+export const researchResume = (studyId: string) =>
+  api<ResearchStudy>(`/research/studies/${studyId}/resume`, jsonInit({}));
+export const researchReplay = (studyId: string) =>
+  api<ResearchStudy>(`/research/studies/${studyId}/replay`, jsonInit({}));
+export const researchSource = (studyId: string, strategy: string, signal?: AbortSignal) =>
+  api<ResearchSource>(`/research/studies/${studyId}/sources/${strategy}`, { signal });

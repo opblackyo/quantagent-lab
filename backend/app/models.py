@@ -98,13 +98,15 @@ class ExperimentConfig(Contract):
     slippage_bps: Annotated[float, Field(strict=True, ge=0, le=100)] = 5
     max_exposure: Literal[1.0] = 1.0
     llm_mode: Literal["mock", "api", "replay"] = "mock"
-    model_provider: Literal["openai"] | None = None
+    model_provider: Literal["openai", "kuaiapi"] | None = None
     model_id: str | None = None
     prompt_version: Literal["numeric-only-v1"] = PROMPT_VERSION
     dataset_hash: str | None = None
     replay_source_run_id: UUID | None = None
     max_llm_calls: Annotated[int, Field(strict=True, ge=0, le=100000)] = 2000
     max_llm_budget_usd: Annotated[float, Field(strict=True, ge=0, le=1000)] = 2
+    max_attempts_per_role: Annotated[int, Field(strict=True, ge=1, le=2)] = 2
+    research_group_id: str | None = None
 
     @model_validator(mode="after")
     def range_and_replay(self):
